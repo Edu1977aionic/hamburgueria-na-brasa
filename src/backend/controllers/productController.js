@@ -1,343 +1,261 @@
 const ProductModel = require('../models/productModel');
 const StorageService = require('../services/storageService');
-const fs = require('fs');
-const path = require('path');
-
-// Instanciando o modelo de produtos
-const productModel = new ProductModel();
-// A implementação do serviço de armazenamento será feita posteriormente
-// const storageService = new StorageService();
 
 class ProductController {
+  constructor() {
+    this.productModel = new ProductModel();
+    this.storageService = new StorageService();
+  }
+
   /**
-   * Obtém todos os produtos com paginação e filtros opcionais
+   * Busca todos os produtos com suporte a paginação e filtros
    */
-  static async getAllProducts(req, res) {
+  getAllProducts = async (req, res) => {
     try {
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
-      const category = req.query.category;
-      const available = req.query.available === 'true';
-      const search = req.query.search;
+      const { page = 1, limit = 10, search, category, sortBy, order } = req.query;
       
-      const { data, count, error } = await productModel.getAllProducts({
-        page, limit, category, available, search
+      const result = await this.productModel.getAllProducts({
+        page: parseInt(page),
+        limit: parseInt(limit),
+        search,
+        category,
+        sortBy,
+        order
       });
-
-      if (error) throw error;
-
-      return res.status(200).json({
-        status: 'success',
-        data,
-        pagination: {
-          page,
-          limit,
-          total: count,
-          pages: Math.ceil(count / limit)
-        }
-      });
+      
+      return res.status(200).json(result);
     } catch (error) {
       console.error('Erro ao buscar produtos:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Erro ao buscar produtos',
-        error: error.message
+      return res.status(500).json({ 
+        error: 'Erro ao buscar produtos', 
+        details: error.message 
       });
     }
-  }
+  };
 
   /**
-   * Obtém um produto pelo ID
+   * Busca um produto pelo ID
    */
-  static async getProductById(req, res) {
+  getProductById = async (req, res) => {
     try {
       const { id } = req.params;
-      const { data, error } = await productModel.getProductById(id);
-
-      if (error) throw error;
-
-      if (!data) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'Produto não encontrado'
-        });
+      const product = await this.productModel.getProductById(id);
+      
+      if (!product) {
+        return res.status(404).json({ error: 'Produto não encontrado' });
       }
-
-      return res.status(200).json({
-        status: 'success',
-        data
-      });
+      
+      return res.status(200).json(product);
     } catch (error) {
       console.error('Erro ao buscar produto por ID:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Erro ao buscar produto',
-        error: error.message
+      return res.status(500).json({ 
+        error: 'Erro ao buscar produto', 
+        details: error.message 
       });
     }
-  }
+  };
 
   /**
    * Cria um novo produto
    */
-  static async createProduct(req, res) {
+  createProduct = async (req, res) => {
     try {
-      const productData = req.body;
+      let productData = req.body;
       
-      // Validar dados do produto
-      if (!productData.name || !productData.price || !productData.category) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Dados insuficientes. Nome, preço e categoria são obrigatórios.'
-        });
-      }
+      // Convertendo strings para números e booleanos
+      if (productData.price) productData.price = parseFloat(productData.price);
+      if (productData.cost) productData.cost = parseFloat(productData.cost);
+      if (productData.discount) productData.discount = parseFloat(productData.discount);
+      productData.featured = productData.featured === 'true';
+      productData.available = productData.available === 'true';
 
-      // Processar imagem se existir
+      // Se tiver imagem no request, faz upload
       if (req.file) {
-        // Temporariamente salva o caminho da imagem
-        // Isso será substituído pelo serviço de armazenamento em nuvem
-        const imagePath = `/uploads/${req.file.filename}`;
-        productData.image = imagePath;
+        const imageUrl = await this.storageService.uploadFile(req.file);
+        productData.image = imageUrl;
       }
 
-      const { data, error } = await productModel.createProduct(productData);
-
-      if (error) throw error;
-
-      return res.status(201).json({
-        status: 'success',
-        message: 'Produto criado com sucesso',
-        data
-      });
+      const product = await this.productModel.createProduct(productData);
+      return res.status(201).json(product);
     } catch (error) {
       console.error('Erro ao criar produto:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Erro ao criar produto',
-        error: error.message
+      return res.status(500).json({ 
+        error: 'Erro ao criar produto', 
+        details: error.message 
       });
     }
-  }
+  };
 
   /**
    * Atualiza um produto existente
    */
-  static async updateProduct(req, res) {
+  updateProduct = async (req, res) => {
     try {
       const { id } = req.params;
-      const productData = req.body;
+      let productData = req.body;
+      
+      // Convertendo strings para números e booleanos
+      if (productData.price) productData.price = parseFloat(productData.price);
+      if (productData.cost) productData.cost = parseFloat(productData.cost);
+      if (productData.discount) productData.discount = parseFloat(productData.discount);
+      
+      if (productData.featured !== undefined) {
+        productData.featured = productData.featured === 'true';
+      }
+      
+      if (productData.available !== undefined) {
+        productData.available = productData.available === 'true';
+      }
 
-      // Verificar se o produto existe
-      const { data: existingProduct, error: existingError } = await productModel.getProductById(id);
-      
-      if (existingError) throw existingError;
-      
+      // Verifica se o produto existe
+      const existingProduct = await this.productModel.getProductById(id);
       if (!existingProduct) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'Produto não encontrado'
-        });
+        return res.status(404).json({ error: 'Produto não encontrado' });
       }
 
-      // Processar imagem se existir
+      // Se tiver imagem no request, faz upload e atualiza
       if (req.file) {
-        // Temporariamente salva o caminho da imagem
-        // Isso será substituído pelo serviço de armazenamento em nuvem
-        const imagePath = `/uploads/${req.file.filename}`;
-        productData.image = imagePath;
-        
-        // Remover imagem antiga se existir
+        // Se já existir imagem, exclui a antiga
         if (existingProduct.image) {
-          // Código de remoção da imagem antiga será implementado com o StorageService
+          await this.storageService.deleteFile(existingProduct.image);
         }
+        
+        const imageUrl = await this.storageService.uploadFile(req.file);
+        productData.image = imageUrl;
       }
 
-      const { data, error } = await productModel.updateProduct(id, productData);
-
-      if (error) throw error;
-
-      return res.status(200).json({
-        status: 'success',
-        message: 'Produto atualizado com sucesso',
-        data
-      });
+      const updatedProduct = await this.productModel.updateProduct(id, productData);
+      return res.status(200).json(updatedProduct);
     } catch (error) {
       console.error('Erro ao atualizar produto:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Erro ao atualizar produto',
-        error: error.message
+      return res.status(500).json({ 
+        error: 'Erro ao atualizar produto', 
+        details: error.message 
       });
     }
-  }
+  };
 
   /**
    * Exclui um produto
    */
-  static async deleteProduct(req, res) {
+  deleteProduct = async (req, res) => {
     try {
       const { id } = req.params;
-
-      // Verificar se o produto existe
-      const { data: existingProduct, error: existingError } = await productModel.getProductById(id);
       
-      if (existingError) throw existingError;
-      
+      // Verifica se o produto existe
+      const existingProduct = await this.productModel.getProductById(id);
       if (!existingProduct) {
-        return res.status(404).json({
-          status: 'error',
-          message: 'Produto não encontrado'
-        });
+        return res.status(404).json({ error: 'Produto não encontrado' });
       }
 
-      // Remover imagem se existir
+      // Se tiver imagem, exclui do storage
       if (existingProduct.image) {
-        // Código de remoção da imagem será implementado com o StorageService
+        await this.storageService.deleteFile(existingProduct.image);
       }
 
-      const { error } = await productModel.deleteProduct(id);
-
-      if (error) throw error;
-
-      return res.status(200).json({
-        status: 'success',
-        message: 'Produto excluído com sucesso'
-      });
+      await this.productModel.deleteProduct(id);
+      return res.status(200).json({ message: 'Produto excluído com sucesso' });
     } catch (error) {
       console.error('Erro ao excluir produto:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Erro ao excluir produto',
-        error: error.message
+      return res.status(500).json({ 
+        error: 'Erro ao excluir produto', 
+        details: error.message 
       });
     }
-  }
+  };
 
   /**
-   * Obtém produtos por categoria
+   * Busca produtos por categoria
    */
-  static async getProductsByCategory(req, res) {
+  getProductsByCategory = async (req, res) => {
     try {
       const { category } = req.params;
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
+      const { page = 1, limit = 10 } = req.query;
       
-      const { data, count, error } = await productModel.getProductsByCategory(category, page, limit);
-
-      if (error) throw error;
-
-      return res.status(200).json({
-        status: 'success',
-        data,
-        pagination: {
-          page,
-          limit,
-          total: count,
-          pages: Math.ceil(count / limit)
-        }
-      });
+      const products = await this.productModel.getProductsByCategory(
+        category,
+        parseInt(page),
+        parseInt(limit)
+      );
+      
+      return res.status(200).json(products);
     } catch (error) {
       console.error('Erro ao buscar produtos por categoria:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Erro ao buscar produtos por categoria',
-        error: error.message
+      return res.status(500).json({ 
+        error: 'Erro ao buscar produtos por categoria', 
+        details: error.message 
       });
     }
-  }
+  };
 
   /**
-   * Obtém produtos em destaque
+   * Busca produtos em destaque
    */
-  static async getFeaturedProducts(req, res) {
+  getFeaturedProducts = async (req, res) => {
     try {
-      const limit = parseInt(req.query.limit) || 6;
-      
-      const { data, error } = await productModel.getFeaturedProducts(limit);
-
-      if (error) throw error;
-
-      return res.status(200).json({
-        status: 'success',
-        data
-      });
+      const { limit = 8 } = req.query;
+      const products = await this.productModel.getFeaturedProducts(parseInt(limit));
+      return res.status(200).json(products);
     } catch (error) {
       console.error('Erro ao buscar produtos em destaque:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Erro ao buscar produtos em destaque',
-        error: error.message
+      return res.status(500).json({ 
+        error: 'Erro ao buscar produtos em destaque', 
+        details: error.message 
       });
     }
-  }
+  };
 
   /**
-   * Altera o status de destaque de um produto
+   * Atualiza status de destaque de um produto
    */
-  static async toggleFeatured(req, res) {
+  updateFeaturedStatus = async (req, res) => {
     try {
       const { id } = req.params;
       const { featured } = req.body;
       
       if (featured === undefined) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'O parâmetro "featured" é obrigatório'
-        });
+        return res.status(400).json({ error: 'O status de destaque é obrigatório' });
       }
 
-      const { data, error } = await productModel.updateProduct(id, { featured });
-
-      if (error) throw error;
-
-      return res.status(200).json({
-        status: 'success',
-        message: `Produto ${featured ? 'adicionado aos' : 'removido dos'} destaques com sucesso`,
-        data
+      const product = await this.productModel.updateProduct(id, { 
+        featured: featured === true || featured === 'true'
       });
+      
+      return res.status(200).json(product);
     } catch (error) {
-      console.error('Erro ao alterar status de destaque do produto:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Erro ao alterar status de destaque do produto',
-        error: error.message
+      console.error('Erro ao atualizar status de destaque:', error);
+      return res.status(500).json({ 
+        error: 'Erro ao atualizar status de destaque', 
+        details: error.message 
       });
     }
-  }
+  };
 
   /**
-   * Altera o status de disponibilidade de um produto
+   * Atualiza status de disponibilidade de um produto
    */
-  static async toggleAvailable(req, res) {
+  updateAvailableStatus = async (req, res) => {
     try {
       const { id } = req.params;
       const { available } = req.body;
       
       if (available === undefined) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'O parâmetro "available" é obrigatório'
-        });
+        return res.status(400).json({ error: 'O status de disponibilidade é obrigatório' });
       }
 
-      const { data, error } = await productModel.updateProduct(id, { available });
-
-      if (error) throw error;
-
-      return res.status(200).json({
-        status: 'success',
-        message: `Produto ${available ? 'disponibilizado' : 'indisponibilizado'} com sucesso`,
-        data
+      const product = await this.productModel.updateProduct(id, { 
+        available: available === true || available === 'true'
       });
+      
+      return res.status(200).json(product);
     } catch (error) {
-      console.error('Erro ao alterar disponibilidade do produto:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Erro ao alterar disponibilidade do produto',
-        error: error.message
+      console.error('Erro ao atualizar disponibilidade:', error);
+      return res.status(500).json({ 
+        error: 'Erro ao atualizar disponibilidade', 
+        details: error.message 
       });
     }
-  }
+  };
 }
 
 module.exports = ProductController;
