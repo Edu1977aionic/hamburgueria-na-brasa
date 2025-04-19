@@ -1,156 +1,167 @@
-const Product = require('../models/productModel');
+const ProductModel = require('../models/productModel');
 
-// Controlador para gerenciar produtos
+/**
+ * Controller para gerenciar operações de produtos
+ */
 const productController = {
-  // Obter todos os produtos com paginação, busca e filtro por categoria
-  getAllProducts: async (page, limit, search, category) => {
+  /**
+   * Obtém todos os produtos com paginação, busca e filtro por categoria
+   * @param {number} page - Número da página
+   * @param {number} limit - Limite de itens por página
+   * @param {string} search - Termo de busca (opcional)
+   * @param {string} category - Categoria para filtrar (opcional)
+   * @returns {Promise<Object>} - Retorna os produtos e informações de paginação
+   */
+  getAllProducts: async (page = 1, limit = 10, search = '', category = '') => {
     try {
-      const pageNumber = parseInt(page, 10);
-      const limitNumber = parseInt(limit, 10);
-      
-      return await Product.getAllProducts(pageNumber, limitNumber, search, category);
+      return await ProductModel.getAllProducts(page, limit, search, category);
     } catch (error) {
-      console.error('Erro em productController.getAllProducts:', error);
+      console.error('Erro no controller getAllProducts:', error);
       throw error;
     }
   },
 
-  // Obter um produto específico por ID
+  /**
+   * Obtém um produto pelo ID
+   * @param {string} id - ID do produto
+   * @returns {Promise<Object|null>} - Retorna o produto ou null se não encontrado
+   */
   getProductById: async (id) => {
     try {
-      return await Product.getProductById(id);
+      return await ProductModel.getProductById(id);
     } catch (error) {
-      console.error(`Erro em productController.getProductById(${id}):`, error);
+      console.error(`Erro no controller getProductById para ID ${id}:`, error);
       throw error;
     }
   },
 
-  // Criar um novo produto
+  /**
+   * Cria um novo produto
+   * @param {Object} productData - Dados do produto a ser criado
+   * @returns {Promise<Object>} - Retorna o produto criado
+   */
   createProduct: async (productData) => {
     try {
-      // Validação básica dos dados do produto
-      if (!productData.name || !productData.price || !productData.category) {
-        throw new Error('Dados incompletos: nome, preço e categoria são obrigatórios');
+      // Validar dados antes de criar
+      if (!productData.name) {
+        throw new Error('Nome do produto é obrigatório');
       }
-
-      // Aplicar valores padrão para campos opcionais
-      const defaultData = {
-        description: '',
-        ingredients: [],
-        is_available: true,
-        is_featured: false,
+      
+      if (!productData.price || isNaN(parseFloat(productData.price))) {
+        throw new Error('Preço válido é obrigatório');
+      }
+      
+      if (!productData.category) {
+        throw new Error('Categoria é obrigatória');
+      }
+      
+      // Converter strings numéricas para números
+      const formattedProduct = {
         ...productData,
-        // Converter string JSON se necessário
-        ingredients: typeof productData.ingredients === 'string'
-          ? JSON.parse(productData.ingredients)
-          : (productData.ingredients || [])
+        price: parseFloat(productData.price),
+        cost_price: productData.cost_price ? parseFloat(productData.cost_price) : null,
+        stock_quantity: productData.stock_quantity ? parseInt(productData.stock_quantity) : null,
+        is_featured: productData.is_featured === 'true' || productData.is_featured === true,
+        is_available: productData.is_available === 'true' || productData.is_available === true,
       };
-
-      // Normalizar campos booleanos que podem vir como strings
-      defaultData.is_available = defaultData.is_available === 'true' || defaultData.is_available === true;
-      defaultData.is_featured = defaultData.is_featured === 'true' || defaultData.is_featured === true;
       
-      // Converter preço para número
-      defaultData.price = parseFloat(defaultData.price);
-      
-      // Criar o produto no banco de dados
-      return await Product.createProduct(defaultData);
+      return await ProductModel.createProduct(formattedProduct);
     } catch (error) {
-      console.error('Erro em productController.createProduct:', error);
+      console.error('Erro no controller createProduct:', error);
       throw error;
     }
   },
 
-  // Atualizar um produto existente
+  /**
+   * Atualiza um produto existente
+   * @param {string} id - ID do produto a ser atualizado
+   * @param {Object} productData - Dados atualizados do produto
+   * @returns {Promise<Object>} - Retorna o produto atualizado
+   */
   updateProduct: async (id, productData) => {
     try {
       // Verificar se o produto existe
-      const existingProduct = await Product.getProductById(id);
+      const existingProduct = await ProductModel.getProductById(id);
       if (!existingProduct) {
-        return null;
+        throw new Error('Produto não encontrado');
       }
-
-      // Processar os dados a serem atualizados
-      const updatedData = {
+      
+      // Converter strings numéricas para números quando presentes
+      const formattedProduct = {
         ...productData,
-        // Converter string JSON se necessário
-        ingredients: typeof productData.ingredients === 'string'
-          ? JSON.parse(productData.ingredients)
-          : productData.ingredients
+        price: productData.price ? parseFloat(productData.price) : existingProduct.price,
+        cost_price: productData.cost_price ? parseFloat(productData.cost_price) : existingProduct.cost_price,
+        stock_quantity: productData.stock_quantity ? parseInt(productData.stock_quantity) : existingProduct.stock_quantity,
+        is_featured: productData.is_featured !== undefined 
+          ? (productData.is_featured === 'true' || productData.is_featured === true)
+          : existingProduct.is_featured,
+        is_available: productData.is_available !== undefined 
+          ? (productData.is_available === 'true' || productData.is_available === true)
+          : existingProduct.is_available,
       };
-
-      // Normalizar campos booleanos que podem vir como strings
-      if (updatedData.is_available !== undefined) {
-        updatedData.is_available = updatedData.is_available === 'true' || updatedData.is_available === true;
-      }
       
-      if (updatedData.is_featured !== undefined) {
-        updatedData.is_featured = updatedData.is_featured === 'true' || updatedData.is_featured === true;
-      }
-      
-      // Converter preço para número, se informado
-      if (updatedData.price !== undefined) {
-        updatedData.price = parseFloat(updatedData.price);
-      }
-
-      // Atualizar o produto no banco de dados
-      return await Product.updateProduct(id, updatedData);
+      return await ProductModel.updateProduct(id, formattedProduct);
     } catch (error) {
-      console.error(`Erro em productController.updateProduct(${id}):`, error);
+      console.error(`Erro no controller updateProduct para ID ${id}:`, error);
       throw error;
     }
   },
 
-  // Excluir um produto
+  /**
+   * Exclui um produto
+   * @param {string} id - ID do produto a ser excluído
+   * @returns {Promise<boolean>} - Retorna true se o produto foi excluído com sucesso
+   */
   deleteProduct: async (id) => {
     try {
-      // Verificar se o produto existe
-      const existingProduct = await Product.getProductById(id);
-      if (!existingProduct) {
-        return false;
-      }
-
-      // Excluir o produto do banco de dados
-      return await Product.deleteProduct(id);
+      return await ProductModel.deleteProduct(id);
     } catch (error) {
-      console.error(`Erro em productController.deleteProduct(${id}):`, error);
+      console.error(`Erro no controller deleteProduct para ID ${id}:`, error);
       throw error;
     }
   },
 
-  // Obter produtos por categoria
-  getProductsByCategory: async (category, page, limit) => {
+  /**
+   * Obtém produtos por categoria
+   * @param {string} category - Categoria dos produtos
+   * @param {number} page - Número da página
+   * @param {number} limit - Limite de itens por página
+   * @returns {Promise<Object>} - Retorna os produtos da categoria e informações de paginação
+   */
+  getProductsByCategory: async (category, page = 1, limit = 10) => {
     try {
-      const pageNumber = parseInt(page, 10);
-      const limitNumber = parseInt(limit, 10);
-      
-      return await Product.getProductsByCategory(category, pageNumber, limitNumber);
+      return await ProductModel.getProductsByCategory(category, page, limit);
     } catch (error) {
-      console.error(`Erro em productController.getProductsByCategory(${category}):`, error);
+      console.error(`Erro no controller getProductsByCategory para categoria ${category}:`, error);
       throw error;
     }
   },
 
-  // Obter produtos em destaque
-  getFeaturedProducts: async (limit) => {
+  /**
+   * Obtém produtos em destaque
+   * @param {number} limit - Número máximo de produtos a retornar
+   * @returns {Promise<Array>} - Retorna os produtos em destaque
+   */
+  getFeaturedProducts: async (limit = 4) => {
     try {
-      const limitNumber = parseInt(limit, 10);
-      return await Product.getFeaturedProducts(limitNumber);
+      return await ProductModel.getFeaturedProducts(limit);
     } catch (error) {
-      console.error('Erro em productController.getFeaturedProducts:', error);
+      console.error('Erro no controller getFeaturedProducts:', error);
       throw error;
     }
   },
 
-  // Obter produtos disponíveis
-  getAvailableProducts: async (page, limit) => {
+  /**
+   * Obtém produtos disponíveis
+   * @param {number} page - Número da página
+   * @param {number} limit - Limite de itens por página
+   * @returns {Promise<Object>} - Retorna os produtos disponíveis e informações de paginação
+   */
+  getAvailableProducts: async (page = 1, limit = 10) => {
     try {
-      const pageNumber = parseInt(page, 10);
-      const limitNumber = parseInt(limit, 10);
-      
-      return await Product.getAvailableProducts(pageNumber, limitNumber);
+      return await ProductModel.getAvailableProducts(page, limit);
     } catch (error) {
-      console.error('Erro em productController.getAvailableProducts:', error);
+      console.error('Erro no controller getAvailableProducts:', error);
       throw error;
     }
   }
