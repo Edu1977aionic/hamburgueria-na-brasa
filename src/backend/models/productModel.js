@@ -1,253 +1,195 @@
-const { supabase } = require('../../supabaseClient');
+const supabase = require('../../supabaseClient');
 
-/**
- * Modelo para operações relacionadas a produtos no banco de dados
- */
 class ProductModel {
-  static tableName = 'products';
+  constructor() {
+    this.table = 'products';
+  }
 
   /**
-   * Obtém todos os produtos com opções de paginação e filtros
-   * @param {number} page - Número da página
-   * @param {number} limit - Limite de itens por página
-   * @param {string} search - Termo de busca (opcional)
-   * @param {string} category - Categoria para filtrar (opcional)
-   * @returns {Promise<{data: Array, count: number}>} Produtos e contagem total
+   * Retorna todos os produtos com paginação e filtros opcionais
+   * @param {Object} options - Opções de busca e paginação
+   * @returns {Promise<Object>} Dados paginados e contagem
    */
-  static async getAllProducts(page = 1, limit = 10, search = '', category = '') {
+  async getAllProducts({ page = 1, limit = 10, category = null, available = null, search = null }) {
     try {
-      // Calcula o offset para paginação
-      const offset = (page - 1) * limit;
-      
-      // Inicia a query
+      // Iniciar consulta
       let query = supabase
-        .from(this.tableName)
+        .from(this.table)
         .select('*', { count: 'exact' });
-      
-      // Adiciona filtro de busca se fornecido
-      if (search) {
-        query = query.ilike('name', `%${search}%`);
-      }
-      
-      // Adiciona filtro de categoria se fornecido
+
+      // Aplicar filtros se existirem
       if (category) {
         query = query.eq('category', category);
       }
+
+      if (available !== null) {
+        query = query.eq('available', available);
+      }
+
+      if (search) {
+        query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+      }
+
+      // Aplicar paginação
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
       
-      // Adiciona paginação e ordenação
       const { data, error, count } = await query
         .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-      
-      if (error) throw error;
-      
-      return {
-        data,
-        count,
-        page,
-        limit,
-        totalPages: Math.ceil(count / limit)
-      };
+        .range(from, to);
+
+      return { data, count, error };
     } catch (error) {
-      console.error('Erro ao buscar produtos:', error);
-      throw error;
+      console.error('Erro no modelo de produtos - getAllProducts:', error);
+      return { data: null, count: 0, error };
     }
   }
 
   /**
-   * Obtém um produto pelo ID
+   * Busca um produto pelo ID
    * @param {string} id - ID do produto
-   * @returns {Promise<Object|null>} Produto encontrado ou null
+   * @returns {Promise<Object>} Dados do produto
    */
-  static async getProductById(id) {
+  async getProductById(id) {
     try {
       const { data, error } = await supabase
-        .from(this.tableName)
+        .from(this.table)
         .select('*')
         .eq('id', id)
         .single();
-      
-      if (error) {
-        // Se o erro for "not found", retornamos null em vez de lançar exceção
-        if (error.code === 'PGRST116') {
-          return null;
-        }
-        throw error;
-      }
-      
-      return data;
+
+      return { data, error };
     } catch (error) {
-      console.error(`Erro ao buscar produto ID ${id}:`, error);
-      throw error;
+      console.error('Erro no modelo de produtos - getProductById:', error);
+      return { data: null, error };
     }
   }
 
   /**
    * Cria um novo produto
    * @param {Object} productData - Dados do produto a ser criado
-   * @returns {Promise<Object>} Novo produto criado
+   * @returns {Promise<Object>} Dados do produto criado
    */
-  static async createProduct(productData) {
+  async createProduct(productData) {
     try {
-      // Garante que os campos booleanos tenham valores padrão
-      const dataWithDefaults = {
-        is_featured: false,
-        is_available: true,
-        ...productData
+      // Garantir que temos valores padrão para campos opcionais
+      const product = {
+        name: productData.name,
+        price: productData.price,
+        category: productData.category,
+        description: productData.description || '',
+        image: productData.image || null,
+        ingredients: productData.ingredients || [],
+        available: productData.available !== undefined ? productData.available : true,
+        featured: productData.featured !== undefined ? productData.featured : false,
+        created_at: new Date(),
+        updated_at: new Date()
       };
-      
+
       const { data, error } = await supabase
-        .from(this.tableName)
-        .insert([dataWithDefaults])
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      return data;
+        .from(this.table)
+        .insert([product])
+        .select();
+
+      return { data: data ? data[0] : null, error };
     } catch (error) {
-      console.error('Erro ao criar produto:', error);
-      throw error;
+      console.error('Erro no modelo de produtos - createProduct:', error);
+      return { data: null, error };
     }
   }
 
   /**
    * Atualiza um produto existente
-   * @param {string} id - ID do produto a ser atualizado
-   * @param {Object} productData - Novos dados do produto
-   * @returns {Promise<Object>} Produto atualizado
+   * @param {string} id - ID do produto
+   * @param {Object} productData - Dados atualizados do produto
+   * @returns {Promise<Object>} Dados do produto atualizado
    */
-  static async updateProduct(id, productData) {
+  async updateProduct(id, productData) {
     try {
+      // Garantir que a data de atualização seja atualizada
+      const updatedData = {
+        ...productData,
+        updated_at: new Date()
+      };
+
       const { data, error } = await supabase
-        .from(this.tableName)
-        .update(productData)
+        .from(this.table)
+        .update(updatedData)
         .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      return data;
+        .select();
+
+      return { data: data ? data[0] : null, error };
     } catch (error) {
-      console.error(`Erro ao atualizar produto ID ${id}:`, error);
-      throw error;
+      console.error('Erro no modelo de produtos - updateProduct:', error);
+      return { data: null, error };
     }
   }
 
   /**
    * Exclui um produto
-   * @param {string} id - ID do produto a ser excluído
-   * @returns {Promise<void>}
+   * @param {string} id - ID do produto
+   * @returns {Promise<Object>} Resultado da operação
    */
-  static async deleteProduct(id) {
+  async deleteProduct(id) {
     try {
       const { error } = await supabase
-        .from(this.tableName)
+        .from(this.table)
         .delete()
         .eq('id', id);
-      
-      if (error) throw error;
+
+      return { error };
     } catch (error) {
-      console.error(`Erro ao excluir produto ID ${id}:`, error);
-      throw error;
+      console.error('Erro no modelo de produtos - deleteProduct:', error);
+      return { error };
     }
   }
 
   /**
-   * Obtém produtos por categoria
+   * Busca produtos por categoria
    * @param {string} category - Categoria para filtrar
-   * @param {number} page - Número da página
+   * @param {number} page - Página atual
    * @param {number} limit - Limite de itens por página
-   * @returns {Promise<{data: Array, count: number}>} Produtos e contagem total
+   * @returns {Promise<Object>} Dados paginados e contagem
    */
-  static async getProductsByCategory(category, page = 1, limit = 10) {
+  async getProductsByCategory(category, page = 1, limit = 10) {
     try {
-      const offset = (page - 1) * limit;
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
       
       const { data, error, count } = await supabase
-        .from(this.tableName)
+        .from(this.table)
         .select('*', { count: 'exact' })
         .eq('category', category)
+        .eq('available', true)
         .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-      
-      if (error) throw error;
-      
-      return {
-        data,
-        count,
-        page,
-        limit,
-        totalPages: Math.ceil(count / limit)
-      };
+        .range(from, to);
+
+      return { data, count, error };
     } catch (error) {
-      console.error(`Erro ao buscar produtos da categoria ${category}:`, error);
-      throw error;
+      console.error('Erro no modelo de produtos - getProductsByCategory:', error);
+      return { data: null, count: 0, error };
     }
   }
 
   /**
-   * Obtém produtos em destaque
-   * @param {number} limit - Número máximo de produtos a retornar
-   * @returns {Promise<Array>} Lista de produtos em destaque
+   * Busca produtos em destaque
+   * @param {number} limit - Limite de itens a retornar
+   * @returns {Promise<Object>} Dados dos produtos em destaque
    */
-  static async getFeaturedProducts(limit = 8) {
+  async getFeaturedProducts(limit = 6) {
     try {
       const { data, error } = await supabase
-        .from(this.tableName)
+        .from(this.table)
         .select('*')
-        .eq('is_featured', true)
-        .eq('is_available', true)
+        .eq('featured', true)
+        .eq('available', true)
         .order('created_at', { ascending: false })
         .limit(limit);
-      
-      if (error) throw error;
-      
-      return data;
-    } catch (error) {
-      console.error('Erro ao buscar produtos em destaque:', error);
-      throw error;
-    }
-  }
 
-  /**
-   * Obtém produtos disponíveis
-   * @param {number} page - Número da página
-   * @param {number} limit - Limite de itens por página
-   * @param {string} category - Categoria para filtrar (opcional)
-   * @returns {Promise<{data: Array, count: number}>} Produtos disponíveis e contagem total
-   */
-  static async getAvailableProducts(page = 1, limit = 10, category = '') {
-    try {
-      const offset = (page - 1) * limit;
-      
-      let query = supabase
-        .from(this.tableName)
-        .select('*', { count: 'exact' })
-        .eq('is_available', true);
-      
-      // Adiciona filtro de categoria se fornecido
-      if (category) {
-        query = query.eq('category', category);
-      }
-      
-      const { data, error, count } = await query
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-      
-      if (error) throw error;
-      
-      return {
-        data,
-        count,
-        page,
-        limit,
-        totalPages: Math.ceil(count / limit)
-      };
+      return { data, error };
     } catch (error) {
-      console.error('Erro ao buscar produtos disponíveis:', error);
-      throw error;
+      console.error('Erro no modelo de produtos - getFeaturedProducts:', error);
+      return { data: null, error };
     }
   }
 }
