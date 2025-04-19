@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const ProductController = require('../controllers/productController');
 const { authenticateJWT, isOwnerOrDeveloper } = require('../middleware/authMiddleware');
-const multerConfig = require('../middleware/multerConfig');
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' }); // Configuração temporária, será substituída por multerConfig
 
 /**
  * @route GET /api/products
- * @desc Obtém todos os produtos com paginação e filtros
+ * @desc Obtém todos os produtos com paginação e filtros opcionais
  * @access Público
  */
 router.get('/', ProductController.getAllProducts);
@@ -21,38 +22,35 @@ router.get('/:id', ProductController.getProductById);
 /**
  * @route POST /api/products
  * @desc Cria um novo produto
- * @access Privado - Apenas proprietários e desenvolvedores
+ * @access Privado (Proprietário ou Desenvolvedor)
  */
-router.post(
-  '/',
-  authenticateJWT,
-  isOwnerOrDeveloper,
-  multerConfig.single('image'),
+router.post('/', 
+  authenticateJWT, 
+  isOwnerOrDeveloper, 
+  upload.single('image'), 
   ProductController.createProduct
 );
 
 /**
  * @route PUT /api/products/:id
  * @desc Atualiza um produto existente
- * @access Privado - Apenas proprietários e desenvolvedores
+ * @access Privado (Proprietário ou Desenvolvedor)
  */
-router.put(
-  '/:id',
-  authenticateJWT,
-  isOwnerOrDeveloper,
-  multerConfig.single('image'),
+router.put('/:id', 
+  authenticateJWT, 
+  isOwnerOrDeveloper, 
+  upload.single('image'), 
   ProductController.updateProduct
 );
 
 /**
  * @route DELETE /api/products/:id
  * @desc Exclui um produto
- * @access Privado - Apenas proprietários e desenvolvedores
+ * @access Privado (Proprietário ou Desenvolvedor)
  */
-router.delete(
-  '/:id',
-  authenticateJWT,
-  isOwnerOrDeveloper,
+router.delete('/:id', 
+  authenticateJWT, 
+  isOwnerOrDeveloper, 
   ProductController.deleteProduct
 );
 
@@ -64,41 +62,32 @@ router.delete(
 router.get('/category/:category', ProductController.getProductsByCategory);
 
 /**
- * @route GET /api/products/featured/list
+ * @route GET /api/products/featured
  * @desc Obtém produtos em destaque
  * @access Público
  */
 router.get('/featured/list', ProductController.getFeaturedProducts);
 
 /**
- * @route GET /api/products/available/list
- * @desc Obtém produtos disponíveis
- * @access Público
+ * @route PUT /api/products/:id/featured
+ * @desc Altera o status de destaque de um produto
+ * @access Privado (Proprietário ou Desenvolvedor)
  */
-router.get('/available/list', ProductController.getAvailableProducts);
-
-/**
- * @route PATCH /api/products/:id/toggle-featured
- * @desc Alterna o status de destaque de um produto
- * @access Privado - Apenas proprietários e desenvolvedores
- */
-router.patch(
-  '/:id/toggle-featured',
-  authenticateJWT,
-  isOwnerOrDeveloper,
+router.put('/:id/featured', 
+  authenticateJWT, 
+  isOwnerOrDeveloper, 
   ProductController.toggleFeatured
 );
 
 /**
- * @route PATCH /api/products/:id/toggle-availability
- * @desc Alterna o status de disponibilidade de um produto
- * @access Privado - Apenas proprietários e desenvolvedores
+ * @route PUT /api/products/:id/available
+ * @desc Altera o status de disponibilidade de um produto
+ * @access Privado (Proprietário ou Desenvolvedor)
  */
-router.patch(
-  '/:id/toggle-availability',
-  authenticateJWT,
-  isOwnerOrDeveloper,
-  ProductController.toggleAvailability
+router.put('/:id/available', 
+  authenticateJWT, 
+  isOwnerOrDeveloper, 
+  ProductController.toggleAvailable
 );
 
 module.exports = router;
