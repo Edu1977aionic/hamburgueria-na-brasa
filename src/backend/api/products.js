@@ -2,118 +2,126 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
 const { authenticateJWT, isOwnerOrDeveloper } = require('../middleware/authMiddleware');
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = require('../middleware/multerConfig');
 
-// Rota para listar todos os produtos com paginação
-// GET /api/products?page=1&limit=10&search=hamburguer&category=lanche
+// Rota para obter todos os produtos (paginada e com busca)
 router.get('/', async (req, res) => {
   try {
     const { page = 1, limit = 10, search = '', category = '' } = req.query;
-    const result = await productController.getAllProducts(
-      parseInt(page), 
-      parseInt(limit), 
-      search, 
-      category
-    );
-    res.json(result);
+    const result = await productController.getAllProducts(page, limit, search, category);
+    res.status(200).json(result);
   } catch (error) {
+    console.error('Erro na rota GET /products:', error);
     res.status(500).json({ error: 'Erro ao buscar produtos', details: error.message });
   }
 });
 
-// Rota para obter um produto pelo ID
-// GET /api/products/:id
+// Rota para obter um produto específico por ID
 router.get('/:id', async (req, res) => {
   try {
     const product = await productController.getProductById(req.params.id);
     if (!product) {
       return res.status(404).json({ error: 'Produto não encontrado' });
     }
-    res.json(product);
+    res.status(200).json(product);
   } catch (error) {
+    console.error(`Erro na rota GET /products/${req.params.id}:`, error);
     res.status(500).json({ error: 'Erro ao buscar produto', details: error.message });
   }
 });
 
-// Rota para criar um novo produto - requer autenticação e permissão de proprietário/desenvolvedor
-// POST /api/products
+// Rota para criar um novo produto (requer autenticação)
 router.post('/', authenticateJWT, isOwnerOrDeveloper, upload.single('image'), async (req, res) => {
   try {
     const productData = req.body;
     
-    // Passa o arquivo da imagem para o controlador, se existir
-    const product = await productController.createProduct(productData, req.file);
-    
-    res.status(201).json(product);
-  } catch (error) {
-    if (error.message.includes('Required fields')) {
-      return res.status(400).json({ error: error.message });
+    // Adiciona o caminho da imagem se foi enviada
+    if (req.file) {
+      productData.image_url = req.file.path;
     }
+    
+    const newProduct = await productController.createProduct(productData);
+    res.status(201).json(newProduct);
+  } catch (error) {
+    console.error('Erro na rota POST /products:', error);
     res.status(500).json({ error: 'Erro ao criar produto', details: error.message });
   }
 });
 
-// Rota para atualizar um produto - requer autenticação e permissão de proprietário/desenvolvedor
-// PUT /api/products/:id
+// Rota para atualizar um produto existente (requer autenticação)
 router.put('/:id', authenticateJWT, isOwnerOrDeveloper, upload.single('image'), async (req, res) => {
   try {
-    const product = await productController.updateProduct(req.params.id, req.body, req.file);
+    const productId = req.params.id;
+    const productData = req.body;
     
-    if (!product) {
+    // Adiciona o caminho da imagem se foi enviada
+    if (req.file) {
+      productData.image_url = req.file.path;
+    }
+    
+    const updatedProduct = await productController.updateProduct(productId, productData);
+    if (!updatedProduct) {
       return res.status(404).json({ error: 'Produto não encontrado' });
     }
     
-    res.json(product);
+    res.status(200).json(updatedProduct);
   } catch (error) {
-    if (error.message.includes('Required fields')) {
-      return res.status(400).json({ error: error.message });
-    }
+    console.error(`Erro na rota PUT /products/${req.params.id}:`, error);
     res.status(500).json({ error: 'Erro ao atualizar produto', details: error.message });
   }
 });
 
-// Rota para excluir um produto - requer autenticação e permissão de proprietário/desenvolvedor
-// DELETE /api/products/:id
+// Rota para excluir um produto (requer autenticação)
 router.delete('/:id', authenticateJWT, isOwnerOrDeveloper, async (req, res) => {
   try {
-    const success = await productController.deleteProduct(req.params.id);
+    const productId = req.params.id;
+    const success = await productController.deleteProduct(productId);
     
     if (!success) {
       return res.status(404).json({ error: 'Produto não encontrado' });
     }
     
-    res.json({ message: 'Produto excluído com sucesso' });
+    res.status(200).json({ message: 'Produto excluído com sucesso' });
   } catch (error) {
+    console.error(`Erro na rota DELETE /products/${req.params.id}:`, error);
     res.status(500).json({ error: 'Erro ao excluir produto', details: error.message });
   }
 });
 
 // Rota para obter produtos por categoria
-// GET /api/products/category/:category?page=1&limit=10
 router.get('/category/:category', async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
-    const result = await productController.getProductsByCategory(
-      req.params.category,
-      parseInt(page),
-      parseInt(limit)
-    );
-    res.json(result);
+    const category = req.params.category;
+    const result = await productController.getProductsByCategory(category, page, limit);
+    res.status(200).json(result);
   } catch (error) {
+    console.error(`Erro na rota GET /products/category/${req.params.category}:`, error);
     res.status(500).json({ error: 'Erro ao buscar produtos por categoria', details: error.message });
   }
 });
 
 // Rota para obter produtos em destaque
-// GET /api/products/featured?limit=6
 router.get('/featured/list', async (req, res) => {
   try {
     const { limit = 6 } = req.query;
-    const result = await productController.getFeaturedProducts(parseInt(limit));
-    res.json(result);
+    const featuredProducts = await productController.getFeaturedProducts(limit);
+    res.status(200).json(featuredProducts);
   } catch (error) {
+    console.error('Erro na rota GET /products/featured/list:', error);
     res.status(500).json({ error: 'Erro ao buscar produtos em destaque', details: error.message });
+  }
+});
+
+// Rota para obter produtos disponíveis
+router.get('/available/list', async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const result = await productController.getAvailableProducts(page, limit);
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Erro na rota GET /products/available/list:', error);
+    res.status(500).json({ error: 'Erro ao buscar produtos disponíveis', details: error.message });
   }
 });
 
