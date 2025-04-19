@@ -2,92 +2,94 @@ const express = require('express');
 const router = express.Router();
 const ProductController = require('../controllers/productController');
 const { authenticateJWT, isOwnerOrDeveloper } = require('../middleware/authMiddleware');
-const multer = require('multer');
-const upload = multer({ dest: 'uploads/' }); // Configuração temporária, será substituída por multerConfig
+const multerConfig = require('../middleware/multerConfig');
+
+// Instanciando o controlador
+const productController = new ProductController();
 
 /**
  * @route GET /api/products
- * @desc Obtém todos os produtos com paginação e filtros opcionais
- * @access Público
+ * @desc Buscar todos os produtos com paginação e filtros
+ * @access Public
  */
-router.get('/', ProductController.getAllProducts);
+router.get('/', productController.getAllProducts);
 
 /**
  * @route GET /api/products/:id
- * @desc Obtém um produto pelo ID
- * @access Público
+ * @desc Buscar um produto pelo ID
+ * @access Public
  */
-router.get('/:id', ProductController.getProductById);
+router.get('/:id', productController.getProductById);
 
 /**
  * @route POST /api/products
- * @desc Cria um novo produto
- * @access Privado (Proprietário ou Desenvolvedor)
+ * @desc Criar um novo produto
+ * @access Private (somente proprietário ou desenvolvedor)
  */
 router.post('/', 
   authenticateJWT, 
-  isOwnerOrDeveloper, 
-  upload.single('image'), 
-  ProductController.createProduct
+  isOwnerOrDeveloper,
+  multerConfig.single('image'),
+  productController.createProduct
 );
 
 /**
  * @route PUT /api/products/:id
- * @desc Atualiza um produto existente
- * @access Privado (Proprietário ou Desenvolvedor)
+ * @desc Atualizar um produto existente
+ * @access Private (somente proprietário ou desenvolvedor)
  */
 router.put('/:id', 
   authenticateJWT, 
-  isOwnerOrDeveloper, 
-  upload.single('image'), 
-  ProductController.updateProduct
+  isOwnerOrDeveloper,
+  multerConfig.single('image'),
+  productController.updateProduct
 );
 
 /**
  * @route DELETE /api/products/:id
- * @desc Exclui um produto
- * @access Privado (Proprietário ou Desenvolvedor)
+ * @desc Excluir um produto
+ * @access Private (somente proprietário ou desenvolvedor)
  */
 router.delete('/:id', 
   authenticateJWT, 
-  isOwnerOrDeveloper, 
-  ProductController.deleteProduct
+  isOwnerOrDeveloper,
+  productController.deleteProduct
 );
 
 /**
  * @route GET /api/products/category/:category
- * @desc Obtém produtos por categoria
- * @access Público
+ * @desc Buscar produtos por categoria
+ * @access Public
  */
-router.get('/category/:category', ProductController.getProductsByCategory);
+router.get('/category/:category', productController.getProductsByCategory);
 
 /**
- * @route GET /api/products/featured
- * @desc Obtém produtos em destaque
- * @access Público
+ * @route GET /api/products/featured/list
+ * @desc Buscar produtos em destaque
+ * @access Public
  */
-router.get('/featured/list', ProductController.getFeaturedProducts);
+router.get('/featured/list', productController.getFeaturedProducts);
 
 /**
- * @route PUT /api/products/:id/featured
- * @desc Altera o status de destaque de um produto
- * @access Privado (Proprietário ou Desenvolvedor)
+ * @route PATCH /api/products/:id/featured
+ * @desc Atualizar status de destaque de um produto
+ * @access Private (somente proprietário ou desenvolvedor)
  */
-router.put('/:id/featured', 
+router.patch('/:id/featured', 
   authenticateJWT, 
-  isOwnerOrDeveloper, 
-  ProductController.toggleFeatured
+  isOwnerOrDeveloper,
+  productController.updateFeaturedStatus
 );
 
 /**
- * @route PUT /api/products/:id/available
- * @desc Altera o status de disponibilidade de um produto
- * @access Privado (Proprietário ou Desenvolvedor)
+ * @route PATCH /api/products/:id/available
+ * @desc Atualizar status de disponibilidade de um produto
+ * @access Private (somente proprietário ou desenvolvedor)
  */
-router.put('/:id/available', 
+router.patch('/:id/available', 
   authenticateJWT, 
-  isOwnerOrDeveloper, 
-  ProductController.toggleAvailable
+  isOwnerOrDeveloper,
+  productController.updateAvailableStatus
 );
 
 module.exports = router;
