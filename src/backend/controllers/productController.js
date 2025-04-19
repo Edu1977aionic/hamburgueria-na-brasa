@@ -1,53 +1,78 @@
 const ProductModel = require('../models/productModel');
 const StorageService = require('../services/storageService');
+const fs = require('fs');
+const path = require('path');
 
-/**
- * Controlador para operações relacionadas a produtos
- */
+// Instanciando o modelo de produtos
+const productModel = new ProductModel();
+// A implementação do serviço de armazenamento será feita posteriormente
+// const storageService = new StorageService();
+
 class ProductController {
   /**
-   * Obtém todos os produtos com opções de paginação e filtros
+   * Obtém todos os produtos com paginação e filtros opcionais
    */
   static async getAllProducts(req, res) {
     try {
-      const { page = 1, limit = 10, search = '', category = '' } = req.query;
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const category = req.query.category;
+      const available = req.query.available === 'true';
+      const search = req.query.search;
       
-      const result = await ProductModel.getAllProducts(
-        parseInt(page),
-        parseInt(limit),
-        search,
-        category
-      );
-      
-      return res.status(200).json(result);
+      const { data, count, error } = await productModel.getAllProducts({
+        page, limit, category, available, search
+      });
+
+      if (error) throw error;
+
+      return res.status(200).json({
+        status: 'success',
+        data,
+        pagination: {
+          page,
+          limit,
+          total: count,
+          pages: Math.ceil(count / limit)
+        }
+      });
     } catch (error) {
-      console.error('Erro ao obter produtos:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao buscar produtos', 
-        details: error.message 
+      console.error('Erro ao buscar produtos:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Erro ao buscar produtos',
+        error: error.message
       });
     }
   }
 
   /**
-   * Obtém um produto específico pelo ID
+   * Obtém um produto pelo ID
    */
   static async getProductById(req, res) {
     try {
       const { id } = req.params;
-      
-      const product = await ProductModel.getProductById(id);
-      
-      if (!product) {
-        return res.status(404).json({ error: 'Produto não encontrado' });
+      const { data, error } = await productModel.getProductById(id);
+
+      if (error) throw error;
+
+      if (!data) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'Produto não encontrado'
+        });
       }
-      
-      return res.status(200).json(product);
+
+      return res.status(200).json({
+        status: 'success',
+        data
+      });
     } catch (error) {
-      console.error(`Erro ao obter produto ID ${req.params.id}:`, error);
-      return res.status(500).json({ 
-        error: 'Erro ao buscar produto', 
-        details: error.message 
+      console.error('Erro ao buscar produto por ID:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Erro ao buscar produto',
+        error: error.message
       });
     }
   }
@@ -59,30 +84,37 @@ class ProductController {
     try {
       const productData = req.body;
       
-      // Validação básica
+      // Validar dados do produto
       if (!productData.name || !productData.price || !productData.category) {
-        return res.status(400).json({ 
-          error: 'Dados incompletos. Nome, preço e categoria são obrigatórios.' 
+        return res.status(400).json({
+          status: 'error',
+          message: 'Dados insuficientes. Nome, preço e categoria são obrigatórios.'
         });
       }
-      
-      // Processar upload de imagem, se existir
+
+      // Processar imagem se existir
       if (req.file) {
-        const imageUrl = await StorageService.uploadFile(req.file);
-        productData.image_url = imageUrl;
+        // Temporariamente salva o caminho da imagem
+        // Isso será substituído pelo serviço de armazenamento em nuvem
+        const imagePath = `/uploads/${req.file.filename}`;
+        productData.image = imagePath;
       }
-      
-      const newProduct = await ProductModel.createProduct(productData);
-      
+
+      const { data, error } = await productModel.createProduct(productData);
+
+      if (error) throw error;
+
       return res.status(201).json({
+        status: 'success',
         message: 'Produto criado com sucesso',
-        product: newProduct
+        data
       });
     } catch (error) {
       console.error('Erro ao criar produto:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao criar produto', 
-        details: error.message 
+      return res.status(500).json({
+        status: 'error',
+        message: 'Erro ao criar produto',
+        error: error.message
       });
     }
   }
@@ -94,36 +126,47 @@ class ProductController {
     try {
       const { id } = req.params;
       const productData = req.body;
-      
+
       // Verificar se o produto existe
-      const existingProduct = await ProductModel.getProductById(id);
+      const { data: existingProduct, error: existingError } = await productModel.getProductById(id);
+      
+      if (existingError) throw existingError;
       
       if (!existingProduct) {
-        return res.status(404).json({ error: 'Produto não encontrado' });
+        return res.status(404).json({
+          status: 'error',
+          message: 'Produto não encontrado'
+        });
       }
-      
-      // Processar upload de imagem, se existir
+
+      // Processar imagem se existir
       if (req.file) {
-        // Se já existir uma imagem, excluir a antiga
-        if (existingProduct.image_url) {
-          await StorageService.deleteFile(existingProduct.image_url);
-        }
+        // Temporariamente salva o caminho da imagem
+        // Isso será substituído pelo serviço de armazenamento em nuvem
+        const imagePath = `/uploads/${req.file.filename}`;
+        productData.image = imagePath;
         
-        const imageUrl = await StorageService.uploadFile(req.file);
-        productData.image_url = imageUrl;
+        // Remover imagem antiga se existir
+        if (existingProduct.image) {
+          // Código de remoção da imagem antiga será implementado com o StorageService
+        }
       }
-      
-      const updatedProduct = await ProductModel.updateProduct(id, productData);
-      
+
+      const { data, error } = await productModel.updateProduct(id, productData);
+
+      if (error) throw error;
+
       return res.status(200).json({
+        status: 'success',
         message: 'Produto atualizado com sucesso',
-        product: updatedProduct
+        data
       });
     } catch (error) {
-      console.error(`Erro ao atualizar produto ID ${req.params.id}:`, error);
-      return res.status(500).json({ 
-        error: 'Erro ao atualizar produto', 
-        details: error.message 
+      console.error('Erro ao atualizar produto:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Erro ao atualizar produto',
+        error: error.message
       });
     }
   }
@@ -134,29 +177,38 @@ class ProductController {
   static async deleteProduct(req, res) {
     try {
       const { id } = req.params;
-      
+
       // Verificar se o produto existe
-      const existingProduct = await ProductModel.getProductById(id);
+      const { data: existingProduct, error: existingError } = await productModel.getProductById(id);
+      
+      if (existingError) throw existingError;
       
       if (!existingProduct) {
-        return res.status(404).json({ error: 'Produto não encontrado' });
+        return res.status(404).json({
+          status: 'error',
+          message: 'Produto não encontrado'
+        });
       }
-      
-      // Se tiver imagem, excluir do armazenamento
-      if (existingProduct.image_url) {
-        await StorageService.deleteFile(existingProduct.image_url);
+
+      // Remover imagem se existir
+      if (existingProduct.image) {
+        // Código de remoção da imagem será implementado com o StorageService
       }
-      
-      await ProductModel.deleteProduct(id);
-      
+
+      const { error } = await productModel.deleteProduct(id);
+
+      if (error) throw error;
+
       return res.status(200).json({
+        status: 'success',
         message: 'Produto excluído com sucesso'
       });
     } catch (error) {
-      console.error(`Erro ao excluir produto ID ${req.params.id}:`, error);
-      return res.status(500).json({ 
-        error: 'Erro ao excluir produto', 
-        details: error.message 
+      console.error('Erro ao excluir produto:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Erro ao excluir produto',
+        error: error.message
       });
     }
   }
@@ -167,20 +219,29 @@ class ProductController {
   static async getProductsByCategory(req, res) {
     try {
       const { category } = req.params;
-      const { page = 1, limit = 10 } = req.query;
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
       
-      const products = await ProductModel.getProductsByCategory(
-        category,
-        parseInt(page),
-        parseInt(limit)
-      );
-      
-      return res.status(200).json(products);
+      const { data, count, error } = await productModel.getProductsByCategory(category, page, limit);
+
+      if (error) throw error;
+
+      return res.status(200).json({
+        status: 'success',
+        data,
+        pagination: {
+          page,
+          limit,
+          total: count,
+          pages: Math.ceil(count / limit)
+        }
+      });
     } catch (error) {
-      console.error(`Erro ao buscar produtos da categoria ${req.params.category}:`, error);
-      return res.status(500).json({ 
-        error: 'Erro ao buscar produtos por categoria', 
-        details: error.message 
+      console.error('Erro ao buscar produtos por categoria:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Erro ao buscar produtos por categoria',
+        error: error.message
       });
     }
   }
@@ -190,101 +251,90 @@ class ProductController {
    */
   static async getFeaturedProducts(req, res) {
     try {
-      const { limit = 8 } = req.query;
+      const limit = parseInt(req.query.limit) || 6;
       
-      const featuredProducts = await ProductModel.getFeaturedProducts(parseInt(limit));
-      
-      return res.status(200).json(featuredProducts);
+      const { data, error } = await productModel.getFeaturedProducts(limit);
+
+      if (error) throw error;
+
+      return res.status(200).json({
+        status: 'success',
+        data
+      });
     } catch (error) {
       console.error('Erro ao buscar produtos em destaque:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao buscar produtos em destaque', 
-        details: error.message 
+      return res.status(500).json({
+        status: 'error',
+        message: 'Erro ao buscar produtos em destaque',
+        error: error.message
       });
     }
   }
 
   /**
-   * Obtém produtos disponíveis
-   */
-  static async getAvailableProducts(req, res) {
-    try {
-      const { page = 1, limit = 10, category = '' } = req.query;
-      
-      const availableProducts = await ProductModel.getAvailableProducts(
-        parseInt(page),
-        parseInt(limit),
-        category
-      );
-      
-      return res.status(200).json(availableProducts);
-    } catch (error) {
-      console.error('Erro ao buscar produtos disponíveis:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao buscar produtos disponíveis', 
-        details: error.message 
-      });
-    }
-  }
-
-  /**
-   * Alterna o status de destaque de um produto
+   * Altera o status de destaque de um produto
    */
   static async toggleFeatured(req, res) {
     try {
       const { id } = req.params;
+      const { featured } = req.body;
       
-      // Verificar se o produto existe
-      const existingProduct = await ProductModel.getProductById(id);
-      
-      if (!existingProduct) {
-        return res.status(404).json({ error: 'Produto não encontrado' });
+      if (featured === undefined) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'O parâmetro "featured" é obrigatório'
+        });
       }
-      
-      const newFeaturedStatus = !existingProduct.is_featured;
-      
-      await ProductModel.updateProduct(id, { is_featured: newFeaturedStatus });
-      
+
+      const { data, error } = await productModel.updateProduct(id, { featured });
+
+      if (error) throw error;
+
       return res.status(200).json({
-        message: `Produto ${newFeaturedStatus ? 'adicionado aos' : 'removido dos'} destaques`,
-        is_featured: newFeaturedStatus
+        status: 'success',
+        message: `Produto ${featured ? 'adicionado aos' : 'removido dos'} destaques com sucesso`,
+        data
       });
     } catch (error) {
-      console.error(`Erro ao alterar status de destaque do produto ID ${req.params.id}:`, error);
-      return res.status(500).json({ 
-        error: 'Erro ao alterar status de destaque', 
-        details: error.message 
+      console.error('Erro ao alterar status de destaque do produto:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Erro ao alterar status de destaque do produto',
+        error: error.message
       });
     }
   }
 
   /**
-   * Alterna o status de disponibilidade de um produto
+   * Altera o status de disponibilidade de um produto
    */
-  static async toggleAvailability(req, res) {
+  static async toggleAvailable(req, res) {
     try {
       const { id } = req.params;
+      const { available } = req.body;
       
-      // Verificar se o produto existe
-      const existingProduct = await ProductModel.getProductById(id);
-      
-      if (!existingProduct) {
-        return res.status(404).json({ error: 'Produto não encontrado' });
+      if (available === undefined) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'O parâmetro "available" é obrigatório'
+        });
       }
-      
-      const newAvailableStatus = !existingProduct.is_available;
-      
-      await ProductModel.updateProduct(id, { is_available: newAvailableStatus });
-      
+
+      const { data, error } = await productModel.updateProduct(id, { available });
+
+      if (error) throw error;
+
       return res.status(200).json({
-        message: `Produto ${newAvailableStatus ? 'disponibilizado' : 'indisponibilizado'} para venda`,
-        is_available: newAvailableStatus
+        status: 'success',
+        message: `Produto ${available ? 'disponibilizado' : 'indisponibilizado'} com sucesso`,
+        data
       });
     } catch (error) {
-      console.error(`Erro ao alterar disponibilidade do produto ID ${req.params.id}:`, error);
-      return res.status(500).json({ 
-        error: 'Erro ao alterar disponibilidade', 
-        details: error.message 
+      console.error('Erro ao alterar disponibilidade do produto:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Erro ao alterar disponibilidade do produto',
+        error: error.message
       });
     }
   }
