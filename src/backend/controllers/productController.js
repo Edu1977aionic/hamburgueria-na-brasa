@@ -1,261 +1,216 @@
 const ProductModel = require('../models/productModel');
-const StorageService = require('../services/storageService');
 
+/**
+ * Controlador para gerenciar operações relacionadas a produtos
+ */
 class ProductController {
   constructor() {
     this.productModel = new ProductModel();
-    this.storageService = new StorageService();
   }
 
   /**
    * Busca todos os produtos com suporte a paginação e filtros
+   * @param {Object} options - Opções de paginação e filtros
+   * @returns {Promise<Object>} Produtos e metadados de paginação
    */
-  getAllProducts = async (req, res) => {
+  async getAllProducts(options) {
     try {
-      const { page = 1, limit = 10, search, category, sortBy, order } = req.query;
-      
-      const result = await this.productModel.getAllProducts({
-        page: parseInt(page),
-        limit: parseInt(limit),
-        search,
-        category,
-        sortBy,
-        order
-      });
-      
-      return res.status(200).json(result);
+      return await this.productModel.getAllProducts(options);
     } catch (error) {
-      console.error('Erro ao buscar produtos:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao buscar produtos', 
-        details: error.message 
-      });
+      throw new Error(`Erro ao buscar produtos: ${error.message}`);
     }
-  };
+  }
 
   /**
    * Busca um produto pelo ID
+   * @param {string} id - ID do produto
+   * @returns {Promise<Object>} Dados do produto
    */
-  getProductById = async (req, res) => {
+  async getProductById(id) {
     try {
-      const { id } = req.params;
       const product = await this.productModel.getProductById(id);
       
       if (!product) {
-        return res.status(404).json({ error: 'Produto não encontrado' });
+        throw new Error('Produto não encontrado');
       }
       
-      return res.status(200).json(product);
+      return product;
     } catch (error) {
-      console.error('Erro ao buscar produto por ID:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao buscar produto', 
-        details: error.message 
-      });
+      throw new Error(`Erro ao buscar produto: ${error.message}`);
     }
-  };
+  }
 
   /**
    * Cria um novo produto
+   * @param {Object} productData - Dados do produto
+   * @returns {Promise<Object>} Produto criado
    */
-  createProduct = async (req, res) => {
+  async createProduct(productData) {
     try {
-      let productData = req.body;
+      // Validar dados do produto
+      this.validateProductData(productData);
       
-      // Convertendo strings para números e booleanos
-      if (productData.price) productData.price = parseFloat(productData.price);
-      if (productData.cost) productData.cost = parseFloat(productData.cost);
-      if (productData.discount) productData.discount = parseFloat(productData.discount);
-      productData.featured = productData.featured === 'true';
-      productData.available = productData.available === 'true';
-
-      // Se tiver imagem no request, faz upload
-      if (req.file) {
-        const imageUrl = await this.storageService.uploadFile(req.file);
-        productData.image = imageUrl;
-      }
-
-      const product = await this.productModel.createProduct(productData);
-      return res.status(201).json(product);
+      return await this.productModel.createProduct(productData);
     } catch (error) {
-      console.error('Erro ao criar produto:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao criar produto', 
-        details: error.message 
-      });
+      throw new Error(`Erro ao criar produto: ${error.message}`);
     }
-  };
+  }
 
   /**
    * Atualiza um produto existente
+   * @param {string} id - ID do produto
+   * @param {Object} productData - Novos dados do produto
+   * @returns {Promise<Object>} Produto atualizado
    */
-  updateProduct = async (req, res) => {
+  async updateProduct(id, productData) {
     try {
-      const { id } = req.params;
-      let productData = req.body;
-      
-      // Convertendo strings para números e booleanos
-      if (productData.price) productData.price = parseFloat(productData.price);
-      if (productData.cost) productData.cost = parseFloat(productData.cost);
-      if (productData.discount) productData.discount = parseFloat(productData.discount);
-      
-      if (productData.featured !== undefined) {
-        productData.featured = productData.featured === 'true';
-      }
-      
-      if (productData.available !== undefined) {
-        productData.available = productData.available === 'true';
-      }
-
       // Verifica se o produto existe
       const existingProduct = await this.productModel.getProductById(id);
+      
       if (!existingProduct) {
-        return res.status(404).json({ error: 'Produto não encontrado' });
+        throw new Error('Produto não encontrado');
       }
-
-      // Se tiver imagem no request, faz upload e atualiza
-      if (req.file) {
-        // Se já existir imagem, exclui a antiga
-        if (existingProduct.image) {
-          await this.storageService.deleteFile(existingProduct.image);
-        }
-        
-        const imageUrl = await this.storageService.uploadFile(req.file);
-        productData.image = imageUrl;
-      }
-
-      const updatedProduct = await this.productModel.updateProduct(id, productData);
-      return res.status(200).json(updatedProduct);
+      
+      // Validar dados do produto
+      this.validateProductData(productData, true);
+      
+      return await this.productModel.updateProduct(id, productData);
     } catch (error) {
-      console.error('Erro ao atualizar produto:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao atualizar produto', 
-        details: error.message 
-      });
+      throw new Error(`Erro ao atualizar produto: ${error.message}`);
     }
-  };
+  }
 
   /**
    * Exclui um produto
+   * @param {string} id - ID do produto
+   * @returns {Promise<boolean>} Confirmação de exclusão
    */
-  deleteProduct = async (req, res) => {
+  async deleteProduct(id) {
     try {
-      const { id } = req.params;
-      
       // Verifica se o produto existe
       const existingProduct = await this.productModel.getProductById(id);
+      
       if (!existingProduct) {
-        return res.status(404).json({ error: 'Produto não encontrado' });
+        throw new Error('Produto não encontrado');
       }
-
-      // Se tiver imagem, exclui do storage
-      if (existingProduct.image) {
-        await this.storageService.deleteFile(existingProduct.image);
-      }
-
-      await this.productModel.deleteProduct(id);
-      return res.status(200).json({ message: 'Produto excluído com sucesso' });
+      
+      return await this.productModel.deleteProduct(id);
     } catch (error) {
-      console.error('Erro ao excluir produto:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao excluir produto', 
-        details: error.message 
-      });
+      throw new Error(`Erro ao excluir produto: ${error.message}`);
     }
-  };
+  }
 
   /**
    * Busca produtos por categoria
+   * @param {string} category - Categoria dos produtos
+   * @param {number} page - Página atual
+   * @param {number} limit - Limite de itens por página
+   * @returns {Promise<Object>} Produtos e metadados de paginação
    */
-  getProductsByCategory = async (req, res) => {
+  async getProductsByCategory(category, page, limit) {
     try {
-      const { category } = req.params;
-      const { page = 1, limit = 10 } = req.query;
-      
-      const products = await this.productModel.getProductsByCategory(
-        category,
-        parseInt(page),
-        parseInt(limit)
-      );
-      
-      return res.status(200).json(products);
+      return await this.productModel.getProductsByCategory(category, page, limit);
     } catch (error) {
-      console.error('Erro ao buscar produtos por categoria:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao buscar produtos por categoria', 
-        details: error.message 
-      });
+      throw new Error(`Erro ao buscar produtos por categoria: ${error.message}`);
     }
-  };
+  }
 
   /**
    * Busca produtos em destaque
+   * @param {number} limit - Limite de produtos
+   * @returns {Promise<Array>} Lista de produtos em destaque
    */
-  getFeaturedProducts = async (req, res) => {
+  async getFeaturedProducts(limit) {
     try {
-      const { limit = 8 } = req.query;
-      const products = await this.productModel.getFeaturedProducts(parseInt(limit));
-      return res.status(200).json(products);
+      return await this.productModel.getFeaturedProducts(limit);
     } catch (error) {
-      console.error('Erro ao buscar produtos em destaque:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao buscar produtos em destaque', 
-        details: error.message 
-      });
+      throw new Error(`Erro ao buscar produtos em destaque: ${error.message}`);
     }
-  };
+  }
 
   /**
-   * Atualiza status de destaque de um produto
+   * Atualiza o status de destaque de um produto
+   * @param {string} id - ID do produto
+   * @param {boolean} featured - Status de destaque
+   * @returns {Promise<Object>} Produto atualizado
    */
-  updateFeaturedStatus = async (req, res) => {
+  async updateFeaturedStatus(id, featured) {
     try {
-      const { id } = req.params;
-      const { featured } = req.body;
+      // Verifica se o produto existe
+      const existingProduct = await this.productModel.getProductById(id);
       
-      if (featured === undefined) {
-        return res.status(400).json({ error: 'O status de destaque é obrigatório' });
+      if (!existingProduct) {
+        throw new Error('Produto não encontrado');
       }
-
-      const product = await this.productModel.updateProduct(id, { 
-        featured: featured === true || featured === 'true'
-      });
       
-      return res.status(200).json(product);
+      return await this.productModel.updateFeaturedStatus(id, featured);
     } catch (error) {
-      console.error('Erro ao atualizar status de destaque:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao atualizar status de destaque', 
-        details: error.message 
-      });
+      throw new Error(`Erro ao atualizar status de destaque: ${error.message}`);
     }
-  };
+  }
 
   /**
-   * Atualiza status de disponibilidade de um produto
+   * Atualiza o status de disponibilidade de um produto
+   * @param {string} id - ID do produto
+   * @param {boolean} available - Status de disponibilidade
+   * @returns {Promise<Object>} Produto atualizado
    */
-  updateAvailableStatus = async (req, res) => {
+  async updateAvailabilityStatus(id, available) {
     try {
-      const { id } = req.params;
-      const { available } = req.body;
+      // Verifica se o produto existe
+      const existingProduct = await this.productModel.getProductById(id);
       
-      if (available === undefined) {
-        return res.status(400).json({ error: 'O status de disponibilidade é obrigatório' });
+      if (!existingProduct) {
+        throw new Error('Produto não encontrado');
       }
-
-      const product = await this.productModel.updateProduct(id, { 
-        available: available === true || available === 'true'
-      });
       
-      return res.status(200).json(product);
+      return await this.productModel.updateAvailabilityStatus(id, available);
     } catch (error) {
-      console.error('Erro ao atualizar disponibilidade:', error);
-      return res.status(500).json({ 
-        error: 'Erro ao atualizar disponibilidade', 
-        details: error.message 
-      });
+      throw new Error(`Erro ao atualizar status de disponibilidade: ${error.message}`);
     }
-  };
+  }
+
+  /**
+   * Valida os dados do produto
+   * @param {Object} productData - Dados do produto para validação
+   * @param {boolean} isUpdate - Se for atualização, alguns campos podem ser opcionais
+   * @throws {Error} Erro de validação
+   */
+  validateProductData(productData, isUpdate = false) {
+    // Campos obrigatórios para criação de produto
+    if (!isUpdate) {
+      if (!productData.name) throw new Error('Nome do produto é obrigatório');
+      if (!productData.description) throw new Error('Descrição do produto é obrigatória');
+      if (!productData.price || isNaN(parseFloat(productData.price))) throw new Error('Preço válido é obrigatório');
+      if (!productData.category) throw new Error('Categoria do produto é obrigatória');
+    }
+
+    // Validações específicas para campos, caso estejam presentes
+    if (productData.price !== undefined && isNaN(parseFloat(productData.price))) {
+      throw new Error('Preço deve ser um número válido');
+    }
+    
+    if (productData.discountPrice !== undefined && 
+        productData.discountPrice !== null && 
+        isNaN(parseFloat(productData.discountPrice))) {
+      throw new Error('Preço com desconto deve ser um número válido');
+    }
+    
+    // Verificar se o preço com desconto é menor que o preço normal
+    if (productData.price && productData.discountPrice && 
+        parseFloat(productData.discountPrice) >= parseFloat(productData.price)) {
+      throw new Error('Preço com desconto deve ser menor que o preço normal');
+    }
+    
+    // Validar que disponibilidade e destaque são booleanos, se fornecidos
+    if (productData.available !== undefined && typeof productData.available !== 'boolean') {
+      throw new Error('Disponibilidade deve ser um valor booleano');
+    }
+    
+    if (productData.featured !== undefined && typeof productData.featured !== 'boolean') {
+      throw new Error('Destaque deve ser um valor booleano');
+    }
+  }
 }
 
 module.exports = ProductController;
